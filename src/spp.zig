@@ -3,7 +3,7 @@
 const std = @import("std");
 const win = std.os.windows;
 const c = @cImport({
-    @cInclude("Windows.h");
+    @cInclude("windows.h");
     @cInclude("replxx.h");
 });
 
