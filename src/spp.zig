@@ -39,7 +39,7 @@ var password = ArrayList(u8).init(allocator);
 var logfile: ?fs.File = null;
 var logmsg = ArrayList(u8).init(allocator);
 
-pub const std_options = .{ .logFn = log };
+pub const std_options: std.Options = .{ .logFn = log };
 
 pub fn initLogfile() void {
     const print = std.debug.print;
