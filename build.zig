@@ -4,10 +4,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const replxx = b.addStaticLibrary(.{
+    const replxx = b.addLibrary(.{
         .name = "replxx",
-        .target = target,
-        .optimize = optimize,
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .optimize = optimize,
+            .target = target,
+        }),
     });
     replxx.linkLibC();
     replxx.linkLibCpp();
@@ -36,9 +39,11 @@ pub fn build(b: *std.Build) void {
 
     const spp = b.addExecutable(.{
         .name = "sqlplusplus",
-        .root_source_file = b.path("src/spp.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/spp.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     spp.linkLibrary(replxx);
 

@@ -6,7 +6,7 @@ Note that this is only a wrapper around `sqlplus`, so it is necessary to have or
 
 ## Build
 
-Tested with zig 0.14.0.
+Tested with zig 0.15.1.
 
 ```
 zig build

@@ -11,7 +11,7 @@ const ArrayList = std.ArrayList;
 const fs = std.fs;
 const fmt = std.fmt;
 const assert = std.debug.assert;
-const sleep = std.time.sleep;
+const sleep = std.Thread.sleep;
 const logd = std.log.debug;
 const logi = std.log.info;
 const logw = std.log.warn;
@@ -31,13 +31,13 @@ var stdout: win.HANDLE = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 
-var prompt = ArrayList(u8).init(allocator);
+var prompt: ArrayList(u8) = .empty;
 var prompt_lock: std.Thread.Mutex = .{};
 var is_password_prompt = std.atomic.Value(bool).init(false);
-var password = ArrayList(u8).init(allocator);
+var password: ArrayList(u8) = .empty;
 
 var logfile: ?fs.File = null;
-var logmsg = ArrayList(u8).init(allocator);
+var logmsg: ArrayList(u8) = .empty;
 
 pub const std_options: std.Options = .{ .logFn = log };
 
@@ -96,7 +96,7 @@ pub fn log(
     const prefix = timeformat ++ "[" ++ comptime level.asText() ++ "] ";
 
     defer logmsg.clearRetainingCapacity();
-    logmsg.writer().print(prefix ++ format ++ "\n", .{
+    logmsg.writer(allocator).print(prefix ++ format ++ "\n", .{
         time.wYear,
         time.wMonth,
         time.wDay,
@@ -144,7 +144,7 @@ pub fn closePipes() void {
 pub fn getHistoryFilename() ![:0]const u8 {
     const home = try std.process.getEnvVarOwned(allocator, "HOME");
     defer allocator.free(home);
-    return try fmt.allocPrintZ(allocator, "{s}\\{s}", .{ home, ".sqlplusplus_history" });
+    return try fmt.allocPrintSentinel(allocator, "{s}\\{s}", .{ home, ".sqlplusplus_history" }, 0);
 }
 
 pub fn readHistoryFile(replxx: ?*c.Replxx) void {
@@ -197,14 +197,14 @@ pub fn getCommandLine() ![:0]u16 {
     const skip_progname = args.skip();
     assert(skip_progname == true);
 
-    var cmdln = ArrayList(u8).init(allocator);
-    defer cmdln.deinit();
+    var cmdln: ArrayList(u8) = .empty;
+    defer cmdln.deinit(allocator);
 
-    try cmdln.appendSlice("sqlplus.exe");
+    try cmdln.appendSlice(allocator, "sqlplus.exe");
 
     while (args.next()) |arg| {
-        try cmdln.append(' ');
-        try cmdln.appendSlice(arg);
+        try cmdln.append(allocator, ' ');
+        try cmdln.appendSlice(allocator, arg);
     }
 
     return try std.unicode.utf8ToUtf16LeAllocZ(allocator, cmdln.items);
@@ -212,8 +212,8 @@ pub fn getCommandLine() ![:0]u16 {
 
 // Read everything from childs STDOUT and write it to our STDOUT.
 pub fn syncChildOutput(replxx: ?*c.Replxx) !void {
-    var new_prompt = ArrayList(u8).init(allocator);
-    defer new_prompt.deinit();
+    var new_prompt: ArrayList(u8) = .empty;
+    defer new_prompt.deinit(allocator);
 
     while (true) {
         var bytes_available: win.DWORD = 0;
@@ -231,7 +231,7 @@ pub fn syncChildOutput(replxx: ?*c.Replxx) !void {
 
                 const idx = std.mem.lastIndexOf(u8, buf[0..bytes_read], "\n");
                 if (idx == null) {
-                    new_prompt.appendSlice(buf[0..bytes_read]) catch |err| {
+                    new_prompt.appendSlice(allocator, buf[0..bytes_read]) catch |err| {
                         loge(
                             "Fatal error: appendSlice for full line failed ({}, {d})",
                             .{ err, bytes_read },
@@ -241,7 +241,7 @@ pub fn syncChildOutput(replxx: ?*c.Replxx) !void {
                 } else {
                     const start = idx.? + 1;
                     new_prompt.clearRetainingCapacity();
-                    new_prompt.appendSlice(buf[start..bytes_read]) catch |err| {
+                    new_prompt.appendSlice(allocator, buf[start..bytes_read]) catch |err| {
                         loge(
                             "Fatal error: appendSlice for partial line failed ({d}, {d}, {})",
                             .{ bytes_read, start, err },
@@ -262,7 +262,7 @@ pub fn syncChildOutput(replxx: ?*c.Replxx) !void {
             if (!std.mem.eql(u8, prompt.items, new_prompt.items)) {
                 prompt_lock.lock();
                 prompt.clearRetainingCapacity();
-                prompt.appendSlice(new_prompt.items) catch |err| {
+                prompt.appendSlice(allocator, new_prompt.items) catch |err| {
                     loge(
                         "Fatal error: appendSlice when copying password failed ({d}, {})",
                         .{ new_prompt.items.len, err },
@@ -306,7 +306,7 @@ pub fn isChildAlive() bool {
     return true;
 }
 
-pub fn handleKeys(code: c_int, ud: ?*anyopaque) callconv(.C) c.ReplxxActionResult {
+pub fn handleKeys(code: c_int, ud: ?*anyopaque) callconv(.c) c.ReplxxActionResult {
     const replxx: *c.Replxx = @ptrCast(ud);
     switch (code) {
         c.REPLXX_KEY_CONTROL('P') => {
@@ -329,7 +329,7 @@ pub fn handleKeys(code: c_int, ud: ?*anyopaque) callconv(.C) c.ReplxxActionResul
     }
 }
 
-pub fn handleCompletion(input: [*c]const u8, comps: ?*c.replxx_completions, _: ?*c_int, _: ?*anyopaque) callconv(.C) void {
+pub fn handleCompletion(input: [*c]const u8, comps: ?*c.replxx_completions, _: ?*c_int, _: ?*anyopaque) callconv(.c) void {
     var words_iter = std.mem.splitBackwardsSequence(u8, std.mem.span(input), " ");
     const last_word = words_iter.next().?;
     // TODO: Is this right? Can I use ascii.upperString on UTF-8 encoded string?
@@ -369,7 +369,7 @@ pub fn handleCompletion(input: [*c]const u8, comps: ?*c.replxx_completions, _: ?
             c.replxx_add_completion(comps, completion);
 }
 
-pub fn handleModify(input: [*c][*c]u8, _: ?*c_int, _: ?*anyopaque) callconv(.C) void {
+pub fn handleModify(input: [*c][*c]u8, _: ?*c_int, _: ?*anyopaque) callconv(.c) void {
     if (is_password_prompt.load(.monotonic)) {
         const line = std.mem.span(input[0]);
 
@@ -394,7 +394,7 @@ pub fn handleModify(input: [*c][*c]u8, _: ?*c_int, _: ?*anyopaque) callconv(.C) 
 
         // Character was added.
         if (password.items.len + 1 == line.len) {
-            password.append(line[line.len - 1]) catch |err| {
+            password.append(allocator, line[line.len - 1]) catch |err| {
                 loge("Fatal error: ArrayList.append failed ({})", .{err});
                 std.process.abort();
             };
@@ -445,9 +445,9 @@ pub fn clearPrompt() void {
 }
 
 pub fn main() !void {
-    defer prompt.deinit();
-    defer password.deinit();
-    defer logmsg.deinit();
+    defer prompt.deinit(allocator);
+    defer password.deinit(allocator);
+    defer logmsg.deinit(allocator);
 
     initLogfile();
     defer if (logfile) |f| f.close();
@@ -516,7 +516,7 @@ pub fn main() !void {
     };
     defer allocator.free(wcmdln);
 
-    win.CreateProcessW(null, wcmdln.ptr, null, null, win.TRUE, 0, null, null, &sinfo, &pinfo) catch |err| {
+    win.CreateProcessW(null, wcmdln.ptr, null, null, win.TRUE, .{}, null, null, &sinfo, &pinfo) catch |err| {
         loge("Fatal error: CreateProcessW failed ({})", .{err});
         return;
     };
