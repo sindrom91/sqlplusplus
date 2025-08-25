@@ -1,6 +1,3 @@
-[submodule "sqlplusplus"]
-	path = sqlplusplus
-	url = https://github.com/sindrom91/sqlplusplus
 [submodule "replxx"]
 	path = replxx
 	url = https://github.com/AmokHuginnsson/replxx.git
