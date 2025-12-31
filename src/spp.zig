@@ -293,6 +293,44 @@ fn isChildAlive() bool {
     return true;
 }
 
+fn complete(input: [*c]const u8, lc: ?*c.linenoiseCompletions) callconv(.c) void {
+    const completions = [_][:0]const u8{
+        "AND ",
+        "BITAND(",
+        "BETWEEN ",
+        "COUNT(",
+        "DELETE ",
+        "DESC ",
+        "DISTINCT ",
+        "EXIT",
+        "FROM ",
+        "GROUP BY ",
+        "IN (",
+        "LIKE '",
+        "LINESIZE ",
+        "ORDER BY ",
+        "ROWNUM ",
+        "PAGESIZE ",
+        "SELECT ",
+        "SUM(",
+        "UPDATE ",
+        "WHERE ",
+    };
+    const input_slice = std.mem.span(input);
+    const idx = std.mem.lastIndexOf(u8, input_slice, " ");
+    const fixed_part = if (idx) |i| input_slice[0 .. i + 1] else "";
+    const last_word = if (idx) |i| input_slice[i + 1 ..] else input_slice;
+    const last_word_upper = std.ascii.allocUpperString(allocator, last_word) catch unreachable;
+    defer allocator.free(last_word_upper);
+    for (completions) |completion| {
+        if (std.mem.startsWith(u8, completion, last_word_upper)) {
+            const complete_line = std.mem.concat(allocator, u8, &.{ fixed_part, completion }) catch unreachable;
+            defer allocator.free(complete_line);
+            c.linenoiseAddCompletion(lc, complete_line.ptr);
+        }
+    }
+}
+
 pub fn main() !void {
     defer prompt.deinit(allocator);
     defer logmsg.deinit(allocator);
@@ -353,6 +391,8 @@ pub fn main() !void {
 
     // Initialize prompt with empty zero-terminated string.
     prompt.append(allocator, 0) catch unreachable;
+
+    c.linenoiseSetCompletionCallback(complete);
 
     while (isChildAlive()) {
         var line: [*c]u8 = null;
