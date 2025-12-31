@@ -4,38 +4,26 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const replxx = b.addLibrary(.{
-        .name = "replxx",
+    const linenoise = b.addLibrary(.{
+        .name = "linenoise",
         .linkage = .static,
         .root_module = b.createModule(.{
             .optimize = optimize,
             .target = target,
         }),
     });
-    replxx.linkLibC();
-    replxx.linkLibCpp();
-    replxx.addCSourceFiles(.{
+    linenoise.linkLibC();
+    linenoise.linkLibCpp();
+    linenoise.addCSourceFiles(.{
         .files = &.{
-            "replxx/src/ConvertUTF.cpp",
-            "replxx/src/conversion.cxx",
-            "replxx/src/escape.cxx",
-            "replxx/src/history.cxx",
-            "replxx/src/prompt.cxx",
-            "replxx/src/replxx.cxx",
-            "replxx/src/replxx_impl.cxx",
-            "replxx/src/terminal.cxx",
-            "replxx/src/util.cxx",
-            "replxx/src/wcwidth.cpp",
-            "replxx/src/windows.cxx",
+            "linenoise/linenoise.c",
         },
         .flags = &.{},
     });
-    replxx.addIncludePath(b.path("replxx/src"));
-    replxx.addIncludePath(b.path("replxx/include"));
-    replxx.root_module.addCMacro("REPLXX_STATIC", "1");
-    replxx.installHeadersDirectory(b.path("replxx/include"), "", .{});
+    linenoise.addIncludePath(b.path("linenoise"));
+    linenoise.installHeadersDirectory(b.path("linenoise"), "", .{});
 
-    b.installArtifact(replxx);
+    b.installArtifact(linenoise);
 
     const spp = b.addExecutable(.{
         .name = "sqlplusplus",
@@ -45,7 +33,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    spp.linkLibrary(replxx);
+    spp.linkLibrary(linenoise);
 
     b.installArtifact(spp);
 }
