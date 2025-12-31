@@ -416,6 +416,7 @@ pub fn main() !void {
         c.linenoiseEditStop(&ls);
         if (line == null) break;
 
+        _ = c.linenoiseHistoryAdd(line);
         try sendLine(std.mem.span(line));
     }
 }
