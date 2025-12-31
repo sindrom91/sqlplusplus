@@ -1,0 +1,3 @@
+[submodule "linenoise"]
+	path = linenoise
+	url = https://github.com/sindrom91/linenoise.git
